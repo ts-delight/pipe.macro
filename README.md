@@ -1,8 +1,8 @@
 # About
 
-Babel macro to build pipeline of expressions for more readable left-to-right composition chains.
+[Babel macro](https://github.com/kentcdodds/babel-plugin-macros) to build pipeline of expressions for more readable left-to-right composition chains.
 
-Additionally, supports bail and reconcile for railway oriented programming.
+This plugin supports many niceties like support for awaiting on pipeline steps, support for [railway oriented programming](https://fsharpforfunandprofit.com/rop/), side-effect steps etc. Go through the Features section below for detailed examples.
 
 ## Example
 
@@ -33,7 +33,7 @@ Also note that there is no runtime dependency. The import to Pipe macro was enti
 ## Why ?
 
 1. Left-to-right (or top-to-bottom) logic flow is more readable.
-2. It is nice being able to compose much of logic over expressions as opposed to a ton of intermediate variables.
+2. It is nice being able to compose much of logic through expressions (as opposed to a ton of intermediate variables).
 
 This plugin may become obsolete once [pipeline-proposal](https://github.com/tc39/proposal-pipeline-operator/) become supported by typescript ([Relevant issue](https://github.com/microsoft/TypeScript/issues/17718)).
 If you don't care about type checking, then you can try out [this babel-plugin](https://babeljs.io/docs/en/babel-plugin-proposal-pipeline-operator).
@@ -68,7 +68,7 @@ module.exports = {
 
 ## Features
 
-1. Multi-step chaining:
+### Multi-step chaining:
 
   Multiple levels of invocation can be chained together
 
@@ -80,7 +80,7 @@ module.exports = {
     )(); // <- Get result
   ```
 
-2. Tap for side-effects:
+### `tap` for side-effects:
 
   ```js
   Pipe(value)
@@ -91,7 +91,7 @@ module.exports = {
     .thru(increment)();
   ```
 
-3. Await support:
+### `await` support:
 
   We can await on results of one step before passing them to another
 
@@ -111,44 +111,7 @@ module.exports = {
       .await()(); // Await can not be used in a non-async function
   ```
 
-4. Bailing early:
-
-  It is possible to have an early-return using `bailIf`:
-
-  ```js
-  Pipe(1)
-    .thru(increment)
-    .bailIf(i => i === 2) // Predicate to determine if chain should exit early
-    .thru(increment) // Operations below are not executed
-    .thru(increment)(); // Result is 2
-  ```
-
-5. Reconcile bailed results:
-
-  We can unify bailed branches and restore pipeline processing through `reconcile`:
-
-  ```js
-  Pipe(1)
-    .thru(increment)
-    .bailIf(i => i === 2)
-    .thru(increment) // Not executed
-    .reconcile() // Subsequent pipeline operations will get executed
-    .thru(increment)(); // Result is 3
-  ```
-
-  Reconcile can take a function that receives the value (from primary chain or wherever we bailed) and returns a
-  value to be used for subsequent processing
-
-  ```js
-  Pipe(1)
-    .thru(increment)
-    .bailIf(i => i === 2)
-    .thru(increment)
-    .reconcile(i => ` ${i} `)
-    .thru(i => i.trim())(); // Result is "2"
-  ```
-
-6. Use object methods with tap and thru:
+### Use object methods with tap and thru:
 
   ```js
   Pipe(new User({id: 1}))
@@ -173,6 +136,43 @@ module.exports = {
   This feature enables you to use third party classes in a fluent manner even if the original author didn't implement a fluent API.
 
   There is atmost one immediately executed function expression generated per pipe, that too is only when side-effects / branching is involved. 
+
+### Bailing early:
+
+  It is possible to have an early-return using `bailIf`:
+
+  ```js
+  Pipe(1)
+    .thru(increment)
+    .bailIf(i => i === 2) // Predicate to determine if chain should exit early
+    .thru(increment) // Operations below are not executed
+    .thru(increment)(); // Result is 2
+  ```
+
+### Reconcile bailed results:
+
+  We can unify bailed branches and restore pipeline processing through `reconcile`:
+
+  ```js
+  Pipe(1)
+    .thru(increment)
+    .bailIf(i => i === 2)
+    .thru(increment) // Not executed
+    .reconcile() // Subsequent pipeline operations will get executed
+    .thru(increment)(); // Result is 3
+  ```
+
+  Reconcile can take a function that receives the value (from primary chain or wherever we bailed) and returns a
+  value to be used for subsequent processing
+
+  ```js
+  Pipe(1)
+    .thru(increment)
+    .bailIf(i => i === 2)
+    .thru(increment)
+    .reconcile(i => ` ${i} `)
+    .thru(i => i.trim())(); // Result is "2"
+  ```
 
 ## Usage with TypeScript
 

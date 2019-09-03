@@ -1,6 +1,6 @@
 {
     "name": "@ts-delight/pipe.macro",
-    "version": "1.0.0",
+    "version": "0.0.0",
     "description": "TypeScript friendly fluent pipeline API with support for async steps, additional arguments, early returns and reconciliation",
     "main": "pipe.macro.js",
     "types": "pipe.macro.d.ts",
