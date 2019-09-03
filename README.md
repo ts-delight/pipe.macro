@@ -148,6 +148,32 @@ module.exports = {
     .thru(i => i.trim())(); // Result is "2"
   ```
 
+6. Use object methods with tap and thru:
+
+  ```js
+  Pipe(new User({id: 1}))
+    .tap.register()          // Delegate to method register of User for side effect
+    .await()
+    .thru.enroll()           // Delegate to method enroll and continue chain with returned value
+    .await()
+    .thru.assignCourses()
+  ```
+
+  Equivalent to:
+
+  ```
+  (function() {
+      const user = new User({id: 1});
+      await user.register();                   // Return value discarded            (tap)
+      const enrollment = await user.enroll();  // Return value used for next step   (thru)
+      return enrollment.assignCourses();
+  })()
+  ```
+
+  This feature enables you to use third party classes in a fluent manner even if the original author didn't implement a fluent API.
+
+  There is atmost one immediately executed function expression generated per pipe, that too is only when side-effects / branching is involved. 
+
 ## Usage with TypeScript
 
 This library is type-safe and comes with type definitions.

@@ -1,6 +1,7 @@
 const { createMacro, MacroError } = require('babel-plugin-macros');
 const { codeFrameColumns } = require('@babel/code-frame');
 const template = require('@babel/template').default;
+const { get } = require('lodash');
 
 const pkgName = 'pipe.macro';
 const debug = require('debug')(pkgName);
@@ -26,7 +27,11 @@ const PipeExpr = ({ references, state, babel }) => {
   const refs = references.default;
 
   const processReference = (nodePath, references) => {
-    if (!isPending(nodePath)) return;
+    if (!isPending(nodePath)) {
+      // This is possible because we process arguments ahead of sequence
+      // when processing callee
+      return;
+    }
     let parentPath = findParent(nodePath);
     if (!t.isCallExpression(parentPath.node)) {
       failWith(1, parentPath.node, 'Expected Pipe to be invoked as a function');
@@ -79,22 +84,61 @@ const PipeExpr = ({ references, state, babel }) => {
           propName === 'bailIf' ||
           propName === 'reconcile'
         ) {
-          parentPath = findParent(parentPath);
-          assertCallExpr(parentPath, propName);
-          ensureArgsProcessed(
-            parentPath.node.arguments,
-            references,
-            processed,
-            t
-          );
-          chain.push({ propName, args: parentPath.node.arguments });
+          let nextParentPath = findParent(parentPath);
+          if (
+            nextParentPath.isCallExpression() &&
+            nextParentPath.node.callee === parentPath.node
+          ) {
+            parentPath = nextParentPath;
+            ensureArgsProcessed(
+              parentPath.node.arguments,
+              references,
+              processed,
+              t
+            );
+            chain.push({ propName, path: parentPath, args: parentPath.node.arguments });
+            continue;
+          }
+          if (
+            nextParentPath.isMemberExpression() &&
+            (propName === 'thru' || propName === 'tap') &&
+            nextParentPath.node.object === parentPath.node
+          ) {
+            const { property } = nextParentPath.node;
+            parentPath = nextParentPath;
+            nextParentPath = findParent(parentPath);
+            if (
+              nextParentPath.isCallExpression() &&
+              nextParentPath.node.callee === parentPath.node
+            ) {
+              parentPath = nextParentPath;
+              ensureArgsProcessed(
+                parentPath.node.arguments,
+                references,
+                processed,
+                t
+              );
+              chain.push({
+                propName,
+                accessor: property,
+                path: parentPath,
+                args: parentPath.node.arguments,
+              });
+              continue;
+            }
+          }
+          failWith(6, parentPath.node, `Unsupported usage of ${propName}`);
         } else if (propName === 'await') {
           parentPath = findParent(parentPath);
           assertCallExpr(parentPath, propName);
           if (parentPath.node.arguments.length !== 0) {
-            failWith(5, memberNode, 'Expected await to be invoked without arguments');
+            failWith(
+              5,
+              memberNode,
+              'Expected await to be invoked without arguments'
+            );
           }
-          chain.push({ propName: 'await' });
+          chain.push({ propName, path: parentPath });
         } else {
           failWith(2, memberNode, 'Invocation of unknown member on Pipe-chain');
         }
@@ -142,8 +186,8 @@ const PipeExpr = ({ references, state, babel }) => {
 
     let statements = condStatements;
 
-    const addDeclaration = () => {
-      const tempId = parentPath.scope.generateUidIdentifier('__pipe_expr_temp');
+    const addDeclaration = (prefix = '__pipe_expr_temp') => {
+      const tempId = parentPath.scope.generateUidIdentifier(prefix);
       declStatements.push(
         t.variableDeclaration('let', [t.variableDeclarator(tempId)])
       );
@@ -152,7 +196,7 @@ const PipeExpr = ({ references, state, babel }) => {
 
     const reconcileBailOutcomes = resultExpr => {
       if (enqueuedBailOutcomes.length === 0) return resultExpr;
-      const tempId = addDeclaration();
+      const tempId = addDeclaration('__pipe_result_before_bail');
       statements.push(
         template(`%%tempId%% = %%resultExpr%%`)({ tempId, resultExpr })
       );
@@ -167,17 +211,45 @@ const PipeExpr = ({ references, state, babel }) => {
       return result;
     };
 
-    for (const member of chain) {
+    for (let i = 0; i < chain.length; i++) {
+      const member = chain[i];
       switch (member.propName) {
         case 'await':
           hasAwait = true;
           resultExpr = t.awaitExpression(t.sequenceExpression([resultExpr]));
           break;
         case 'thru':
-          resultExpr = t.callExpression(member.args[0], [
-            resultExpr,
-            ...member.args.slice(1),
-          ]);
+          const { accessor } = member;
+          if (accessor) {
+            if (member.args.length > 0) {
+              resultExpr = t.callExpression(
+                t.isMemberExpression(resultExpr, accesor),
+                member.args
+              );
+            } else {
+              let valIdPrefix = `__result_upto_thru`;
+              const lstart = get(member.path.node, ['loc', 'start', 'line']);
+              if (lstart) valIdPrefix += `$L${lstart}`;
+              const valId = parentPath.scope.generateUidIdentifier(valIdPrefix);
+              statements.push(
+                template(`const %%valId%% = %%resultExpr%%;`)({
+                  valId,
+                  resultExpr,
+                })
+              );
+              resultExpr = template(`typeof %%valId%%.%%accessor%% === "function" 
+                ? %%valId%%.%%accessor%%() 
+                : %%valId%%.%%accessor%%`)({ valId, accessor });
+              if (t.isExpressionStatement(resultExpr)) {
+                resultExpr = resultExpr.expression;
+              }
+            }
+          } else {
+            resultExpr = t.callExpression(member.args[0], [
+              resultExpr,
+              ...member.args.slice(1),
+            ]);
+          }
           break;
         case 'thruEnd':
           resultExpr = t.callExpression(
@@ -186,26 +258,37 @@ const PipeExpr = ({ references, state, babel }) => {
           );
           break;
         case 'tap':
-          const id = parentPath.scope.generateUidIdentifier('__result');
-          resultExpr = t.callExpression(
-            t.functionExpression(
-              null,
-              [],
-              t.blockStatement([
-                t.variableDeclaration('const', [
-                  t.variableDeclarator(id, resultExpr),
-                ]),
-                t.expressionStatement(t.callExpression(member.args[0], [id])),
-                t.returnStatement(id),
-              ]),
-              false,
-              hasAwait
-            ),
-            []
-          );
-          if (hasAwait) {
-            resultExpr = t.awaitExpression(resultExpr);
+          if (i === 0 || chain[i - 1].propName !== 'tap') {
+            let valIdPrefix = `__result_upto_tap`;
+            const lstart = get(member.path.node, ['loc', 'start', 'line']);
+            if (lstart) valIdPrefix += `$L${lstart}`;
+            const id = parentPath.scope.generateUidIdentifier(valIdPrefix);
+            statements.push(
+              t.variableDeclaration('const', [
+                t.variableDeclarator(id, resultExpr),
+              ])
+            );
+            resultExpr = id;
           }
+          let expr = member.accessor
+            ? t.callExpression(
+                t.memberExpression(resultExpr, member.accessor),
+                member.args
+              )
+            : t.callExpression(member.args[0], [resultExpr]);
+
+          // Consume all subsequent await expressions
+          for (
+            let j = i + 1;
+            j < chain.length - 1 && chain[j].propName === 'await';
+            j++, i++
+          ) {
+            if (!t.isAwaitExpression(expr)) {
+              expr = t.awaitExpression(expr);
+            }
+          }
+          statements.push(t.expressionStatement(expr));
+          
           break;
         case 'bailIf': {
           const resultId = addDeclaration();
@@ -225,7 +308,10 @@ const PipeExpr = ({ references, state, babel }) => {
           );
           const innerStatements = [];
           statements.push(
-            t.ifStatement(t.unaryExpression('!', bailResultId), t.blockStatement(innerStatements))
+            t.ifStatement(
+              t.unaryExpression('!', bailResultId),
+              t.blockStatement(innerStatements)
+            )
           );
           statements = innerStatements;
           resultExpr = resultId;
@@ -287,6 +373,7 @@ const PipeExpr = ({ references, state, babel }) => {
     }
   };
 
+  // Process all macro references in sequence
   for (let i = 0; i < refs.length; i++) {
     const nodePath = refs[i];
     processReference(nodePath, refs.slice(i + 1));

@@ -1,10 +1,11 @@
 import * as results from './__fixtures__';
 
 test('API', async () => {
-  const { r6, r7, r9, r10, ...rest } = results;
+  const { r6, r7, r9, r10, r13, ...rest } = results;
   expect(rest).toMatchInlineSnapshot(`
     Object {
       "r1": 10,
+      "r11": "Jane",
       "r2": 11,
       "r3": 23,
       "r4": "Hello: 31",
@@ -19,12 +20,13 @@ test('API', async () => {
       5,
     ]
   `);
-  const result = await Promise.all([r6, r7, r10].map(r => r() as any));
+  const result = await Promise.all([r6, r7, r10, r13].map(r => r() as any));
   expect(result).toMatchInlineSnapshot(`
     Array [
       "Hello: 31",
       31,
       4,
+      true,
     ]
   `);
 });

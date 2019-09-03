@@ -69,3 +69,64 @@ const r10 = async () => Pipe(1)
   .thru((j) => j + 2)()
 
 export { r4, r5, r6, r7, r8, r9, r10 };
+
+class User {
+  first: string;
+  last: string;
+
+  constructor() {
+    this.first = "Jane";
+    this.last = "Doe";
+  }
+
+  getFirst() {
+    return this.first;
+  }
+  getLast() {
+    return this.last;
+  }
+  getName(count: "first" | "last" | "full") {
+    switch (count) {
+      case "first":
+        return this.getFirst();
+      case "last":
+        return this.getLast();
+      case "full":
+        return this.getFirst() + " " + this.getLast();
+    }
+  }
+}
+
+const r11 = Pipe(new User())
+  .tap.getFirst()
+  .tap.getLast()
+  .thru.getFirst()
+  .thru.trim()();
+
+class Enrollment {
+  async assignCourses() {
+    return Promise.resolve(true);
+  }
+}
+
+class Student {
+  id: number;
+  constructor(params: { id: number }) {
+    this.id = params.id;
+  }
+  async register() {
+    return this;
+  }
+  enroll() {
+    return Promise.resolve(new Enrollment());
+  }
+}
+
+const r13 = async () => Pipe(new Student({ id: 1 }))
+  .tap.register()
+  .await()
+  .thru.enroll()
+  .await()
+  .thru.assignCourses()()
+
+export { r11, r13 };
