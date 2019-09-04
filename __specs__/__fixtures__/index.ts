@@ -109,7 +109,7 @@ class Enrollment {
   }
 }
 
-class Student {
+export class Student {
   id: number;
   constructor(params: { id: number }) {
     this.id = params.id;
@@ -130,3 +130,20 @@ const r13 = async () => Pipe(new Student({ id: 1 }))
   .thru.assignCourses()()
 
 export { r11, r13 };
+
+export const r14 = Pipe<number>()();
+
+export const r15 = Pipe<number>()
+  .thru((i) => i + 1)();
+
+export const r16 = Pipe<number>()
+  .thru(async (i) => i + 1)
+  .await()
+  .thru((j) => j + 2)()
+
+export const r17 = Pipe<Student>()
+  .tap.register()
+  .await()
+  .thru.enroll()
+  .await()
+  .thru.assignCourses()()

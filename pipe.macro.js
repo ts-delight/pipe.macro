@@ -38,11 +38,11 @@ const PipeExpr = ({ references, state, babel }) => {
     }
     const args = parentPath.node.arguments;
     ensureArgsProcessed(args, references);
-    if (args.length !== 1) {
+    if (args.length !== 0 && args.length !== 1) {
       failWith(
         2,
         parentPath.node,
-        'Expected Pipe to have been invoked with a single argument'
+        'Expected Pipe to have been invoked with atmost one argument'
       );
     }
     const target = parentPath.node.arguments[0];
@@ -67,6 +67,8 @@ const PipeExpr = ({ references, state, babel }) => {
   };
 
   const processChain = (parentPath, target, references) => {
+    let generateFunction = !target;
+    target = target || parentPath.scope.generateUidIdentifier('pipe_arg');
     const chain = [];
     while (true) {
       const nextParentPath = findParent(parentPath);
@@ -96,7 +98,11 @@ const PipeExpr = ({ references, state, babel }) => {
               processed,
               t
             );
-            chain.push({ propName, path: parentPath, args: parentPath.node.arguments });
+            chain.push({
+              propName,
+              path: parentPath,
+              args: parentPath.node.arguments,
+            });
             continue;
           }
           if (
@@ -149,7 +155,8 @@ const PipeExpr = ({ references, state, babel }) => {
         const { hasAwait, resultExpr } = transformChain(
           target,
           chain,
-          nextParentPath
+          nextParentPath,
+          generateFunction
         );
         if (hasAwait) {
           const fnParent = nextParentPath.findParent(
@@ -176,7 +183,7 @@ const PipeExpr = ({ references, state, babel }) => {
     }
   };
 
-  const transformChain = (target, chain, parentPath) => {
+  const transformChain = (target, chain, parentPath, generateFunction) => {
     let resultExpr = target;
     let hasAwait = false;
 
@@ -288,7 +295,7 @@ const PipeExpr = ({ references, state, babel }) => {
             }
           }
           statements.push(t.expressionStatement(expr));
-          
+
           break;
         case 'bailIf': {
           const resultId = addDeclaration();
@@ -329,26 +336,32 @@ const PipeExpr = ({ references, state, babel }) => {
 
     resultExpr = reconcileBailOutcomes(resultExpr);
 
-    if (declStatements.length === 0 && condStatements.length === 0)
+    if (
+      declStatements.length === 0 &&
+      condStatements.length === 0 &&
+      !generateFunction
+    )
       return { hasAwait, resultExpr };
 
-    resultExpr = t.callExpression(
-      t.functionExpression(
-        null,
-        [],
-        t.blockStatement([
-          ...declStatements,
-          ...condStatements,
-          t.returnStatement(resultExpr),
-        ]),
-        false,
-        hasAwait
-      ),
-      []
+    const args = generateFunction ? [target] : [];
+
+    resultExpr = t.functionExpression(
+      null,
+      args,
+      t.blockStatement([
+        ...declStatements,
+        ...condStatements,
+        t.returnStatement(resultExpr),
+      ]),
+      false,
+      hasAwait
     );
 
-    if (hasAwait) resultExpr = t.awaitExpression(resultExpr);
+    if (!generateFunction) {
+      resultExpr = t.callExpression(resultExpr, []);
 
+      if (hasAwait) resultExpr = t.awaitExpression(resultExpr);
+    }
     return { hasAwait, resultExpr };
   };
 

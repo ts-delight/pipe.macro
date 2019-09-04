@@ -1,7 +1,19 @@
 import * as results from './__fixtures__';
 
 test('API', async () => {
-  const { r6, r7, r9, r10, r13, ...rest } = results;
+  const {
+    Student,
+    r6,
+    r7,
+    r9,
+    r10,
+    r13,
+    r14,
+    r15,
+    r16,
+    r17,
+    ...rest
+  } = results;
   expect(rest).toMatchInlineSnapshot(`
     Object {
       "r1": 10,
@@ -29,4 +41,8 @@ test('API', async () => {
       true,
     ]
   `);
+  expect(r14(1)).toMatchInlineSnapshot(`1`);
+  expect(r15(1)).toMatchInlineSnapshot(`2`);
+  expect(await r16(1)).toMatchInlineSnapshot(`4`);
+  expect(await r17(new Student({ id: 1 }))).toMatchInlineSnapshot(`true`);
 });

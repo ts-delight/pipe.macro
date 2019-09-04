@@ -25,7 +25,7 @@ test('Transformations', () => {
     Object.defineProperty(exports, \\"__esModule\\", {
       value: true
     });
-    exports.r13 = exports.r11 = exports.r10 = exports.r9 = exports.r8 = exports.r7 = exports.r6 = exports.r5 = exports.r4 = exports.r3 = exports.r2 = exports.r1 = void 0;
+    exports.r17 = exports.r16 = exports.r15 = exports.r14 = exports.r13 = exports.r11 = exports.Student = exports.r10 = exports.r9 = exports.r8 = exports.r7 = exports.r6 = exports.r5 = exports.r4 = exports.r3 = exports.r2 = exports.r1 = void 0;
     const r1 = 10;
     exports.r1 = r1;
 
@@ -213,6 +213,8 @@ test('Transformations', () => {
 
     }
 
+    exports.Student = Student;
+
     const r13 = async () => await async function () {
       const _result_upto_tap$L7 = new Student({
         id: 1
@@ -226,6 +228,36 @@ test('Transformations', () => {
       return typeof _result_upto_thru$L4.assignCourses === \\"function\\" ? _result_upto_thru$L4.assignCourses() : _result_upto_thru$L4.assignCourses;
     }();
 
-    exports.r13 = r13;"
+    exports.r13 = r13;
+
+    const r14 = function (_pipe_arg) {
+      return _pipe_arg;
+    };
+
+    exports.r14 = r14;
+
+    const r15 = function (_pipe_arg2) {
+      return (i => i + 1)(_pipe_arg2);
+    };
+
+    exports.r15 = r15;
+
+    const r16 = async function (_pipe_arg3) {
+      return (j => j + 2)((await ((async i => i + 1)(_pipe_arg3))));
+    };
+
+    exports.r16 = r16;
+
+    const r17 = async function (_pipe_arg4) {
+      const _result_upto_tap$L8 = _pipe_arg4;
+      await _result_upto_tap$L8.register();
+      const _result_upto_thru$L5 = _result_upto_tap$L8;
+
+      const _result_upto_thru$L6 = await (typeof _result_upto_thru$L5.enroll === \\"function\\" ? _result_upto_thru$L5.enroll() : _result_upto_thru$L5.enroll);
+
+      return typeof _result_upto_thru$L6.assignCourses === \\"function\\" ? _result_upto_thru$L6.assignCourses() : _result_upto_thru$L6.assignCourses;
+    };
+
+    exports.r17 = r17;"
   `);
 });
