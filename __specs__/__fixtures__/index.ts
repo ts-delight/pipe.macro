@@ -15,13 +15,13 @@ const r4 = Pipe(30)
   .thru((i: number, msg: string) => `${msg}: ${i}`, "Hello")();
 
 const r5 = Pipe(30)
-  .tap((i) => {
+  .tap((i) =>
     console.log('i: ', i)
-  })
+  )
   .thruEnd((i) => i + 1)
-  .tap((j) => {
+  .tap((j) =>
     console.log('j: ', j)
-  })
+  )
   .thruEnd((msg: string, i: number) => `${msg}: ${i}`, "Hello")();
 
 const r6 = async () => Pipe(30)

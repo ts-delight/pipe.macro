@@ -2,6 +2,7 @@ const { createMacro, MacroError } = require('babel-plugin-macros');
 const { codeFrameColumns } = require('@babel/code-frame');
 const template = require('@babel/template').default;
 const { get } = require('lodash');
+const traverse = require('@babel/traverse').default;
 
 const pkgName = 'pipe.macro';
 const debug = require('debug')(pkgName);
@@ -218,6 +219,62 @@ const PipeExpr = ({ references, state, babel }) => {
       return result;
     };
 
+    const isFunctionExpression = (node) => 
+      node.type.match(/FunctionExpression$/) &&
+      node.body &&
+      node.body.type.match(/Expression$/)
+
+    const inlineFunctionExpression = (node, member, parentPath) => {
+      const substNames = [];
+      const idMap = node.params.reduce((result, { name }) => {
+        const substName = parentPath.scope.generateUidIdentifier(
+          `__${name}_subst`
+        );
+        substNames.push(substName);
+        result[name] = substName;
+        return result;
+      }, {});
+      const fnBodyVisitor = {
+        Identifier(idPath) {
+          const substitutedId = idMap[idPath.node.name];
+          if (substitutedId) {
+            idPath.node.name = substitutedId.name;
+          }
+        },
+      };
+      let fnBody;
+      member.path.traverse({
+        FunctionExpression(innerPath) {
+          innerPath.traverse(fnBodyVisitor);
+          fnBody = innerPath.node.body;
+        },
+        ArrowFunctionExpression(innerPath) {
+          innerPath.traverse(fnBodyVisitor);
+          fnBody = innerPath.node.body;
+        },
+      });
+      if (!fnBody) return fnBody;
+      statements.push(
+        template(`const %%varName%% = %%val%%;`)({
+          varName: substNames.shift(),
+          val: resultExpr,
+        })
+      );
+      for (const arg of member.args.slice(1)) {
+        const varName = substNames.shift();
+        if (varName) {
+          statements.push(
+            template(`const %%varName%% = %%val%%;`)({
+              varName,
+              val: arg,
+            })
+          );
+        } else throw new Error('Arity mismatch');
+      }
+      if (substNames.length !== 0) throw new Error('Arity mismatch');
+      return fnBody;
+    };
+
     for (let i = 0; i < chain.length; i++) {
       const member = chain[i];
       switch (member.propName) {
@@ -252,10 +309,21 @@ const PipeExpr = ({ references, state, babel }) => {
               }
             }
           } else {
-            resultExpr = t.callExpression(member.args[0], [
-              resultExpr,
-              ...member.args.slice(1),
-            ]);
+            const arg = member.args[0];
+            let didInline = false;
+            if (isFunctionExpression(arg)) {
+              const fnBody = inlineFunctionExpression(arg, member, parentPath);
+              if (fnBody) {
+                resultExpr = fnBody;
+                didInline = true;
+              }
+            }
+            if (!didInline) {
+              resultExpr = t.callExpression(member.args[0], [
+                resultExpr,
+                ...member.args.slice(1),
+              ]);
+            }
           }
           break;
         case 'thruEnd':
@@ -277,12 +345,21 @@ const PipeExpr = ({ references, state, babel }) => {
             );
             resultExpr = id;
           }
-          let expr = member.accessor
-            ? t.callExpression(
-                t.memberExpression(resultExpr, member.accessor),
-                member.args
-              )
-            : t.callExpression(member.args[0], [resultExpr]);
+          let expr;
+          if (member.accessor) {
+            expr = t.callExpression(
+              t.memberExpression(resultExpr, member.accessor),
+              member.args
+            );
+          } else {
+            const node = member.args[0];
+            if (isFunctionExpression(node)) {
+              expr = inlineFunctionExpression(node, member, parentPath)
+            }
+            if (!expr) {
+              expr = t.callExpression(member.args[0], [resultExpr]);
+            }
+          }
 
           // Consume all subsequent await expressions
           for (

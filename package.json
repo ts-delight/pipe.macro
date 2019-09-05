@@ -37,5 +37,10 @@
         "jest": "^24.9.0",
         "prettier": "^1.18.2",
         "typescript": "^3.7.0-dev.20190831"
+    },
+    "dependencies": {
+        "@babel/template": "^7.4.4",
+        "@babel/traverse": "^7.5.5",
+        "lodash": "^4.17.15"
     }
 }

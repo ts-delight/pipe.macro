@@ -29,11 +29,22 @@ test('Transformations', () => {
     const r1 = 10;
     exports.r1 = r1;
 
-    const r2 = (i => i + 1)(10);
+    const r2 = function () {
+      const _i_subst = 10;
+      return _i_subst + 1;
+    }();
 
     exports.r2 = r2;
 
-    const r3 = ((i, j) => i + j)(((i, j) => i + j)(20, 1), 2);
+    const r3 = function () {
+      const _i_subst2 = 20;
+      const _j_subst = 1;
+
+      const _i_subst3 = _i_subst2 + _j_subst;
+
+      const _j_subst2 = 2;
+      return _i_subst3 + _j_subst2;
+    }();
 
     exports.r3 = r3;
 
@@ -43,17 +54,13 @@ test('Transformations', () => {
 
     const r5 = function () {
       const _result_upto_tap$L = 30;
-
-      (i => {
-        console.log('i: ', i);
-      })(_result_upto_tap$L);
+      const _i_subst4 = _result_upto_tap$L;
+      console.log('i: ', _i_subst4);
 
       const _result_upto_tap$L2 = (i => i + 1)(_result_upto_tap$L);
 
-      (j => {
-        console.log('j: ', j);
-      })(_result_upto_tap$L2);
-
+      const _j_subst3 = _result_upto_tap$L2;
+      console.log('j: ', _j_subst3);
       return ((msg, i) => \`\${msg}: \${i}\`)(\\"Hello\\", _result_upto_tap$L2);
     }();
 
@@ -97,12 +104,14 @@ test('Transformations', () => {
 
       let _pipe_result_before_bail;
 
-      _pipe_expr_temp = (i => i + 1)(10);
+      const _i_subst5 = 10;
+      _pipe_expr_temp = _i_subst5 + 1;
 
-      _pipe_expr_temp2 = (i => i === 11)(_pipe_expr_temp);
+      _pipe_expr_temp2 = (_i_subst6 => _i_subst6 === 11)(_pipe_expr_temp);
 
       if (!_pipe_expr_temp2) {
-        _pipe_result_before_bail = (i => i + 2)(_pipe_expr_temp);
+        const _i_subst6 = _pipe_expr_temp;
+        _pipe_result_before_bail = _i_subst6 + 2;
       }
 
       return _pipe_expr_temp2 ? _pipe_expr_temp : _pipe_result_before_bail;
@@ -130,7 +139,10 @@ test('Transformations', () => {
       if (!_pipe_expr_temp4) {
         _pipe_expr_temp5 = increment(_pipe_expr_temp3);
 
-        _pipe_expr_temp6 = (i => (i => i === 10)(i))(_pipe_expr_temp5);
+        _pipe_expr_temp6 = (i => function () {
+          const _i_subst7 = i;
+          return _i_subst7 === 10;
+        }())(_pipe_expr_temp5);
 
         if (!_pipe_expr_temp6) {
           _pipe_result_before_bail2 = _pipe_expr_temp5;
@@ -142,7 +154,13 @@ test('Transformations', () => {
 
     exports.r9 = r9;
 
-    const r10 = async () => (j => j + 2)((await ((async i => i + 1)(1))));
+    const r10 = async () => await async function () {
+      const _i_subst8 = 1;
+
+      const _j_subst4 = await (_i_subst8 + 1);
+
+      return _j_subst4 + 2;
+    }();
 
     exports.r10 = r10;
 
@@ -237,13 +255,18 @@ test('Transformations', () => {
     exports.r14 = r14;
 
     const r15 = function (_pipe_arg2) {
-      return (i => i + 1)(_pipe_arg2);
+      const _i_subst9 = _pipe_arg2;
+      return _i_subst9 + 1;
     };
 
     exports.r15 = r15;
 
     const r16 = async function (_pipe_arg3) {
-      return (j => j + 2)((await ((async i => i + 1)(_pipe_arg3))));
+      const _i_subst10 = _pipe_arg3;
+
+      const _j_subst5 = await (_i_subst10 + 1);
+
+      return _j_subst5 + 2;
     };
 
     exports.r16 = r16;
