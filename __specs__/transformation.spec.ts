@@ -48,20 +48,30 @@ test('Transformations', () => {
 
     exports.r3 = r3;
 
-    const r4 = ((i, msg) => \`\${msg}: \${i}\`)((i => i + 1)(30), \\"Hello\\");
+    const r4 = function () {
+      const _i_subst4 = 30;
+
+      const _i_subst5 = _i_subst4 + 1;
+
+      const _msg_subst = \\"Hello\\";
+      return \`\${_msg_subst}: \${_i_subst5}\`;
+    }();
 
     exports.r4 = r4;
 
     const r5 = function () {
       const _result_upto_tap$L = 30;
-      const _i_subst4 = _result_upto_tap$L;
-      console.log('i: ', _i_subst4);
+      const _i_subst6 = _result_upto_tap$L;
+      console.log('i: ', _i_subst6);
+      const _i_subst7 = _result_upto_tap$L;
 
-      const _result_upto_tap$L2 = (i => i + 1)(_result_upto_tap$L);
+      const _result_upto_tap$L2 = _i_subst7 + 1;
 
       const _j_subst3 = _result_upto_tap$L2;
       console.log('j: ', _j_subst3);
-      return ((msg, i) => \`\${msg}: \${i}\`)(\\"Hello\\", _result_upto_tap$L2);
+      const _msg_subst2 = \\"Hello\\";
+      const _i_subst8 = _result_upto_tap$L2;
+      return \`\${_msg_subst2}: \${_i_subst8}\`;
     }();
 
     exports.r5 = r5;
@@ -69,11 +79,13 @@ test('Transformations', () => {
     const r6 = async () => await async function () {
       const _result_upto_tap$L3 = 30;
 
-      (i => {
-        console.log('i: ', i);
+      (_i_subst9 => {
+        console.log('i: ', _i_subst9);
       })(_result_upto_tap$L3);
 
-      const _result_upto_tap$L4 = await ((async i => i + 1)(_result_upto_tap$L3));
+      const _i_subst9 = _result_upto_tap$L3;
+
+      const _result_upto_tap$L4 = await (_i_subst9 + 1);
 
       await (j => {
         console.log('j: ', j);
@@ -88,11 +100,12 @@ test('Transformations', () => {
     const r7 = async () => await async function () {
       const _result_upto_tap$L5 = 30;
 
-      (i => {
-        console.log('i: ', i);
+      (_i_subst10 => {
+        console.log('i: ', _i_subst10);
       })(_result_upto_tap$L5);
 
-      return await ((async i => i + 1)(_result_upto_tap$L5));
+      const _i_subst10 = _result_upto_tap$L5;
+      return await (_i_subst10 + 1);
     }();
 
     exports.r7 = r7;
@@ -104,14 +117,14 @@ test('Transformations', () => {
 
       let _pipe_result_before_bail;
 
-      const _i_subst5 = 10;
-      _pipe_expr_temp = _i_subst5 + 1;
-
-      _pipe_expr_temp2 = (_i_subst6 => _i_subst6 === 11)(_pipe_expr_temp);
+      const _i_subst11 = 10;
+      _pipe_expr_temp = _i_subst11 + 1;
+      const _i_subst12 = _pipe_expr_temp;
+      _pipe_expr_temp2 = _i_subst12 === 11;
 
       if (!_pipe_expr_temp2) {
-        const _i_subst6 = _pipe_expr_temp;
-        _pipe_result_before_bail = _i_subst6 + 2;
+        const _i_subst13 = _pipe_expr_temp;
+        _pipe_result_before_bail = _i_subst13 + 2;
       }
 
       return _pipe_expr_temp2 ? _pipe_expr_temp : _pipe_result_before_bail;
@@ -133,16 +146,17 @@ test('Transformations', () => {
       let _pipe_result_before_bail2;
 
       _pipe_expr_temp3 = increment(i);
-
-      _pipe_expr_temp4 = (i => i === 11)(_pipe_expr_temp3);
+      const _i_subst15 = _pipe_expr_temp3;
+      _pipe_expr_temp4 = _i_subst15 === 11;
 
       if (!_pipe_expr_temp4) {
         _pipe_expr_temp5 = increment(_pipe_expr_temp3);
+        const _i_subst16 = _pipe_expr_temp5;
 
-        _pipe_expr_temp6 = (i => function () {
-          const _i_subst7 = i;
-          return _i_subst7 === 10;
-        }())(_pipe_expr_temp5);
+        _pipe_expr_temp6 = function () {
+          const _i_subst14 = _i_subst16;
+          return _i_subst14 === 10;
+        }();
 
         if (!_pipe_expr_temp6) {
           _pipe_result_before_bail2 = _pipe_expr_temp5;
@@ -155,9 +169,9 @@ test('Transformations', () => {
     exports.r9 = r9;
 
     const r10 = async () => await async function () {
-      const _i_subst8 = 1;
+      const _i_subst17 = 1;
 
-      const _j_subst4 = await (_i_subst8 + 1);
+      const _j_subst4 = await (_i_subst17 + 1);
 
       return _j_subst4 + 2;
     }();
@@ -255,16 +269,16 @@ test('Transformations', () => {
     exports.r14 = r14;
 
     const r15 = function (_pipe_arg2) {
-      const _i_subst9 = _pipe_arg2;
-      return _i_subst9 + 1;
+      const _i_subst18 = _pipe_arg2;
+      return _i_subst18 + 1;
     };
 
     exports.r15 = r15;
 
     const r16 = async function (_pipe_arg3) {
-      const _i_subst10 = _pipe_arg3;
+      const _i_subst19 = _pipe_arg3;
 
-      const _j_subst5 = await (_i_subst10 + 1);
+      const _j_subst5 = await (_i_subst19 + 1);
 
       return _j_subst5 + 2;
     };

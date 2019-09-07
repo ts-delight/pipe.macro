@@ -2,7 +2,6 @@ const { createMacro, MacroError } = require('babel-plugin-macros');
 const { codeFrameColumns } = require('@babel/code-frame');
 const template = require('@babel/template').default;
 const { get } = require('lodash');
-const traverse = require('@babel/traverse').default;
 
 const pkgName = 'pipe.macro';
 const debug = require('debug')(pkgName);
@@ -33,7 +32,7 @@ const PipeExpr = ({ references, state, babel }) => {
       // when processing callee
       return;
     }
-    let parentPath = findParent(nodePath);
+    let parentPath = nodePath.parentPath;
     if (!t.isCallExpression(parentPath.node)) {
       failWith(1, parentPath.node, 'Expected Pipe to be invoked as a function');
     }
@@ -56,9 +55,6 @@ const PipeExpr = ({ references, state, babel }) => {
     processed.add(nodePath.node);
   };
 
-  // Find immediate parent
-  const findParent = nodePath => nodePath.findParent(() => true);
-
   // Print well formatted errors
   const failWith = (errCode, node, message) => {
     if (node.loc) console.log(codeFrameColumns(code, node.loc, { message }));
@@ -72,7 +68,7 @@ const PipeExpr = ({ references, state, babel }) => {
     target = target || parentPath.scope.generateUidIdentifier('pipe_arg');
     const chain = [];
     while (true) {
-      const nextParentPath = findParent(parentPath);
+      const nextParentPath = parentPath.parentPath;
       if (
         t.isMemberExpression(nextParentPath.node) &&
         nextParentPath.node.object === parentPath.node
@@ -87,7 +83,7 @@ const PipeExpr = ({ references, state, babel }) => {
           propName === 'bailIf' ||
           propName === 'reconcile'
         ) {
-          let nextParentPath = findParent(parentPath);
+          let nextParentPath = parentPath.parentPath;
           if (
             nextParentPath.isCallExpression() &&
             nextParentPath.node.callee === parentPath.node
@@ -113,7 +109,7 @@ const PipeExpr = ({ references, state, babel }) => {
           ) {
             const { property } = nextParentPath.node;
             parentPath = nextParentPath;
-            nextParentPath = findParent(parentPath);
+            nextParentPath = parentPath.parentPath;
             if (
               nextParentPath.isCallExpression() &&
               nextParentPath.node.callee === parentPath.node
@@ -136,7 +132,7 @@ const PipeExpr = ({ references, state, babel }) => {
           }
           failWith(6, parentPath.node, `Unsupported usage of ${propName}`);
         } else if (propName === 'await') {
-          parentPath = findParent(parentPath);
+          parentPath = parentPath.parentPath;
           assertCallExpr(parentPath, propName);
           if (parentPath.node.arguments.length !== 0) {
             failWith(
@@ -194,46 +190,71 @@ const PipeExpr = ({ references, state, babel }) => {
 
     let statements = condStatements;
 
-    const addDeclaration = (prefix = '__pipe_expr_temp') => {
-      const tempId = parentPath.scope.generateUidIdentifier(prefix);
-      declStatements.push(
-        t.variableDeclaration('let', [t.variableDeclarator(tempId)])
-      );
+    const makeId = (prefix = '__pipe_expr_temp') =>
+      parentPath.scope.generateUidIdentifier(prefix);
+
+    const makeIdDecl = (mutable = false, id, val) =>
+      t.variableDeclaration(mutable ? 'let' : 'const', [
+        t.variableDeclarator(id, val),
+      ]);
+
+    const addTopLevelIdDecl = prefix => {
+      const tempId = makeId(prefix);
+      declStatements.push(makeIdDecl(true, tempId));
       return tempId;
     };
 
-    const reconcileBailOutcomes = resultExpr => {
-      if (enqueuedBailOutcomes.length === 0) return resultExpr;
-      const tempId = addDeclaration('__pipe_result_before_bail');
+    const addDecl = (id, val, mutable = false) => {
+      statements.push(makeIdDecl(mutable, id, val));
+    };
+
+    const addDeclForResultExpr = (valIdPrefix, node) => {
+      const valId = makeId(suffixLinePos(valIdPrefix, node));
+      addDecl(valId, resultExpr);
+      return valId;
+    };
+
+    const addAssignment = (id, val) =>
       statements.push(
-        template(`%%tempId%% = %%resultExpr%%`)({ tempId, resultExpr })
+        t.expressionStatement(t.assignmentExpression('=', id, val))
       );
-      // Break out of nested if conditions:
+
+    const breakOutOfNesting = () => {
       statements = condStatements;
+    };
+
+    const hasPendingBailOutcomes = () => enqueuedBailOutcomes.length > 0;
+
+    const resetBailOutcomes = () => {
+      enqueuedBailOutcomes = [];
+    };
+
+    const reconcileBailOutcomes = resultExpr => {
+      if (!hasPendingBailOutcomes()) return resultExpr;
+      const tempId = addTopLevelIdDecl('__pipe_result_before_bail');
+      addAssignment(tempId, resultExpr);
+      breakOutOfNesting();
       const result = enqueuedBailOutcomes.reduce(
         (lastResultId, [bailResultId, resultId]) =>
           t.conditionalExpression(bailResultId, resultId, lastResultId),
         tempId
       );
-      enqueuedBailOutcomes = [];
+      resetBailOutcomes();
       return result;
     };
 
-    const isFunctionExpression = (node) => 
-      node.type.match(/FunctionExpression$/) &&
-      node.body &&
-      node.body.type.match(/Expression$/)
+    const isArrowReturningExpression = node =>
+      t.isArrowFunctionExpression(node) && 
+      !t.isBlockStatement(node.body);
 
-    const inlineFunctionExpression = (node, member, parentPath) => {
-      const substNames = [];
-      const idMap = node.params.reduce((result, { name }) => {
-        const substName = parentPath.scope.generateUidIdentifier(
-          `__${name}_subst`
-        );
-        substNames.push(substName);
+    const mapToSubstituteIds = params =>
+      params.reduce((result, { name }) => {
+        const substName = makeId(`__${name}_subst`);
         result[name] = substName;
         return result;
       }, {});
+
+    const substituteIdsInFnBody = (path, idMap) => {
       const fnBodyVisitor = {
         Identifier(idPath) {
           const substitutedId = idMap[idPath.node.name];
@@ -242,41 +263,47 @@ const PipeExpr = ({ references, state, babel }) => {
           }
         },
       };
-      let fnBody;
-      member.path.traverse({
+      path.traverse({
         FunctionExpression(innerPath) {
           innerPath.traverse(fnBodyVisitor);
-          fnBody = innerPath.node.body;
         },
         ArrowFunctionExpression(innerPath) {
           innerPath.traverse(fnBodyVisitor);
-          fnBody = innerPath.node.body;
         },
       });
-      if (!fnBody) return fnBody;
-      statements.push(
-        template(`const %%varName%% = %%val%%;`)({
-          varName: substNames.shift(),
-          val: resultExpr,
-        })
-      );
-      for (const arg of member.args.slice(1)) {
-        const varName = substNames.shift();
-        if (varName) {
-          statements.push(
-            template(`const %%varName%% = %%val%%;`)({
-              varName,
-              val: arg,
-            })
-          );
-        } else throw new Error('Arity mismatch');
+    };
+
+    const inlineFunctionExpression = (callable, path, invocationArgs) => {
+      const idMap = mapToSubstituteIds(callable.params);
+      const substNames = Object.values(idMap);
+      substituteIdsInFnBody(path, idMap);
+      if (substNames.length !== invocationArgs.length) {
+        failWith(7, path.node, 'Invocation with incorrect arity');
       }
-      if (substNames.length !== 0) throw new Error('Arity mismatch');
-      return fnBody;
+      invocationArgs.forEach((arg, idx) => {
+        const varName = substNames[idx];
+        addDecl(varName, arg);
+      });
+      return callable.body;
+    };
+
+    const invokeOrInlineFnCall = (callable, path, invocationArgs) => {
+      if (isArrowReturningExpression(callable)) {
+        return inlineFunctionExpression(callable, path, invocationArgs);
+      }
+      return t.callExpression(callable, invocationArgs);
+    };
+
+    const invokeOrInlineFnCallMember = (member, getArgs) => {
+      const callable = member.args[0];
+      const extraArgs = member.args.slice(1);
+      const invocationArgs = getArgs(resultExpr, extraArgs);
+      return invokeOrInlineFnCall(callable, member.path, invocationArgs);
     };
 
     for (let i = 0; i < chain.length; i++) {
       const member = chain[i];
+      const { node } = member.path;
       switch (member.propName) {
         case 'await':
           hasAwait = true;
@@ -291,58 +318,30 @@ const PipeExpr = ({ references, state, babel }) => {
                 member.args
               );
             } else {
-              let valIdPrefix = `__result_upto_thru`;
-              const lstart = get(member.path.node, ['loc', 'start', 'line']);
-              if (lstart) valIdPrefix += `$L${lstart}`;
-              const valId = parentPath.scope.generateUidIdentifier(valIdPrefix);
-              statements.push(
-                template(`const %%valId%% = %%resultExpr%%;`)({
-                  valId,
-                  resultExpr,
-                })
-              );
-              resultExpr = template(`typeof %%valId%%.%%accessor%% === "function" 
-                ? %%valId%%.%%accessor%%() 
-                : %%valId%%.%%accessor%%`)({ valId, accessor });
+              const valId = addDeclForResultExpr(`__result_upto_thru`, node);
+              resultExpr = resultExprTpl({ valId, accessor });
               if (t.isExpressionStatement(resultExpr)) {
                 resultExpr = resultExpr.expression;
               }
             }
           } else {
-            const arg = member.args[0];
-            let didInline = false;
-            if (isFunctionExpression(arg)) {
-              const fnBody = inlineFunctionExpression(arg, member, parentPath);
-              if (fnBody) {
-                resultExpr = fnBody;
-                didInline = true;
-              }
-            }
-            if (!didInline) {
-              resultExpr = t.callExpression(member.args[0], [
-                resultExpr,
-                ...member.args.slice(1),
-              ]);
-            }
+            resultExpr = invokeOrInlineFnCallMember(
+              member,
+              (pipeArg, extraArgs) =>
+                pipeArg ? [pipeArg, ...extraArgs] : extraArgs
+            );
           }
           break;
         case 'thruEnd':
-          resultExpr = t.callExpression(
-            member.args[0],
-            member.args.slice(1).concat(resultExpr)
+          resultExpr = invokeOrInlineFnCallMember(
+            member,
+            (pipeArg, extraArgs) =>
+              pipeArg ? extraArgs.concat(pipeArg) : extraArgs
           );
           break;
         case 'tap':
           if (i === 0 || chain[i - 1].propName !== 'tap') {
-            let valIdPrefix = `__result_upto_tap`;
-            const lstart = get(member.path.node, ['loc', 'start', 'line']);
-            if (lstart) valIdPrefix += `$L${lstart}`;
-            const id = parentPath.scope.generateUidIdentifier(valIdPrefix);
-            statements.push(
-              t.variableDeclaration('const', [
-                t.variableDeclarator(id, resultExpr),
-              ])
-            );
+            const id = addDeclForResultExpr(`__result_upto_tap`, node);
             resultExpr = id;
           }
           let expr;
@@ -352,13 +351,7 @@ const PipeExpr = ({ references, state, babel }) => {
               member.args
             );
           } else {
-            const node = member.args[0];
-            if (isFunctionExpression(node)) {
-              expr = inlineFunctionExpression(node, member, parentPath)
-            }
-            if (!expr) {
-              expr = t.callExpression(member.args[0], [resultExpr]);
-            }
+            expr = invokeOrInlineFnCallMember(member, pipeArg => [pipeArg]);
           }
 
           // Consume all subsequent await expressions
@@ -375,21 +368,14 @@ const PipeExpr = ({ references, state, babel }) => {
 
           break;
         case 'bailIf': {
-          const resultId = addDeclaration();
-          statements.push(
-            t.expressionStatement(
-              t.assignmentExpression('=', resultId, resultExpr)
-            )
-          );
-          const bailResultId = addDeclaration();
+          const resultId = addTopLevelIdDecl();
+          addAssignment(resultId, resultExpr);
+          const bailResultId = addTopLevelIdDecl();
           enqueuedBailOutcomes.push([bailResultId, resultId]);
-          statements.push(
-            template(`%%bailResultId%% = %%predicate%%(%%resultId%%);`)({
-              bailResultId,
-              predicate: member.args[0],
-              resultId,
-            })
-          );
+          const expr = invokeOrInlineFnCall(member.args[0], member.path, [
+            resultId,
+          ]);
+          addAssignment(bailResultId, expr);
           const innerStatements = [];
           statements.push(
             t.ifStatement(
@@ -436,9 +422,9 @@ const PipeExpr = ({ references, state, babel }) => {
 
     if (!generateFunction) {
       resultExpr = t.callExpression(resultExpr, []);
-
       if (hasAwait) resultExpr = t.awaitExpression(resultExpr);
     }
+
     return { hasAwait, resultExpr };
   };
 
@@ -468,6 +454,16 @@ const PipeExpr = ({ references, state, babel }) => {
     const nodePath = refs[i];
     processReference(nodePath, refs.slice(i + 1));
   }
+};
+
+const resultExprTpl = template(`typeof %%valId%%.%%accessor%% === "function" 
+  ? %%valId%%.%%accessor%%() 
+  : %%valId%%.%%accessor%%`);
+
+const suffixLinePos = (prefix, node) => {
+  const lstart = get(node, ['loc', 'start', 'line']);
+  if (lstart) return `${prefix}$L${lstart}`;
+  return prefix;
 };
 
 module.exports = createMacro(PipeExpr);
