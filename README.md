@@ -80,6 +80,30 @@ module.exports = {
     )(); // <- Get result
   ```
 
+  Predicates which are specified as arrow functions (with implicit returns) will get inlined.
+
+  So the example above compiles to something like:
+
+  ```js
+  (function() {
+    const tmp = increment(value);
+    return tmp - 1; // The arrow function was compiled away
+  })()
+  ```
+
+  So, even if we have multiple thru invocations, if their arguments are arrow functions without block
+  body, then the compiled output will have just one top level function invocation.
+
+### Pipeline functions:
+
+  If Pipe is not passed a value, it will return a function.
+
+  ```js
+  const fn = Pipe().thru(increment).thru(decrement)();
+
+  fn(10) // Returns 10
+  ```
+
 ### `tap` for side-effects:
 
   ```js
@@ -135,7 +159,7 @@ module.exports = {
 
   This feature enables you to use third party classes in a fluent manner even if the original author didn't implement a fluent API.
 
-  There is atmost one immediately executed function expression generated per pipe, that too is only when side-effects / branching is involved. 
+  There is atmost one immediately executed function expression generated per pipe, that too is only when side-effects / branching is involved.
 
 ### Bailing early:
 
@@ -195,6 +219,22 @@ module.exports = {
     // ... other plugins
   ],
 };
+```
+
+When creating pipeline functions it is required to pass the argument type as a generic parameter to
+Pipe:
+
+```ts
+const fn = Pipe<Student>()
+  .tap.register()
+  .await()
+  .thru.enroll()
+  .await()
+  .thru.assignCourses()()
+
+// Later
+
+fn(new Student());
 ```
 
 ## Caveats
